@@ -640,6 +640,99 @@ class BigEndianTestCase(common.PyTablesTestCase):
                         "Retrieved values do not match the expected values.")
 
 
+class IndexTestCase(common.PyTablesTestCase):
+    "Tests indexing Time nodes."
+
+    # The description used in the test Table.
+    class MyTimeRow(tables.IsDescription):
+        t32col = tables.Time32Col(pos=1)
+        t64col = tables.Time64Col(pos=2)
+
+    # The atoms used in the test VLArrays.
+    myTime32Atom = tables.Time32Atom(shape = (2, 1))
+    myTime64Atom = tables.Time64Atom(shape = (2, 1))
+
+
+    def setUp(self):
+        """setUp() -> None
+
+        This method sets the following instance attributes:
+          * 'h5fname', the name of the temporary HDF5 file with '/table',
+            '/vlarray4' and '/vlarray8' nodes.
+        """
+
+        self.h5fname = tempfile.mktemp(suffix = '.h5')
+
+        h5file = tables.openFile(
+                self.h5fname, 'w', title = "Test for indexing time leaves")
+
+        # Create test Table.
+        h5file.createTable('/', 'table', self.MyTimeRow)
+
+        # Create test VLArrays.
+        h5file.createVLArray('/', 'vlarray4', self.myTime32Atom)
+        h5file.createVLArray('/', 'vlarray8', self.myTime64Atom)
+
+        h5file.close()
+
+
+    def tearDown(self):
+        """tearDown() -> None
+
+        Removes 'h5fname'.
+        """
+
+        os.remove(self.h5fname)
+
+
+    def test00_indexTime32(self):
+        "Index the Time32 column"
+
+        h5file = tables.openFile(self.h5fname, "r+")
+        tbl = h5file.root.table
+
+        # see https://github.com/PyTables/PyTables/issues/119
+        t = 1321031471.0  # 11/11/11 11:11:11
+        tbl.append([(t + i, t-1) for i in range(1000)])
+        tbl.flush()
+
+        # Check the written data.
+        query = "(t32col < %d)" % (t+5)
+        found = lambda: len(tbl.readWhere(query))
+
+        self.assertEquals(5, found())
+        tbl.cols.t32col.createIndex()
+        self.assertEquals(5, found())
+
+        h5file.close()
+
+
+    def test00_indexTime64(self):
+        "Index the Time64 column"
+
+        h5file = tables.openFile(self.h5fname, "r+")
+        tbl = h5file.root.table
+
+        # see https://github.com/PyTables/PyTables/issues/119
+        t = 1321031471.0  # 11/11/11 11:11:11
+        tbl.append([(t + i, t - i) for i in range(10)])
+        tbl.flush()
+
+        # Check the written data.
+        query = "(t64col <= %d)" % (t-5)
+        found = lambda: len(tbl.readWhere(query))
+        def found():
+            import pdb; pdb.set_trace()
+            rv = tbl.readWhere(query)
+            return len(rv)
+
+        self.assertEquals(5, found())
+        tbl.cols.t64col.createIndex()
+        self.assertEquals(5, found())
+
+        h5file.close()
+
+
 #----------------------------------------------------------------------
 
 def suite():
@@ -655,6 +748,7 @@ def suite():
     theSuite.addTest(unittest.makeSuite(CompareTestCase))
     theSuite.addTest(unittest.makeSuite(UnalignedTestCase))
     theSuite.addTest(unittest.makeSuite(BigEndianTestCase))
+    theSuite.addTest(unittest.makeSuite(IndexTestCase))
 
     return theSuite
 
